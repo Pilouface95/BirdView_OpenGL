@@ -1,0 +1,118 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.15"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"build" : "code/vendor/glfw",
+					"childIndexes" : 
+					[
+						2
+					],
+					"jsonFile" : "directory-code.vendor.glfw-Debug-2341987f34ecb936118f.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "code/vendor/glfw"
+				},
+				{
+					"build" : "code/vendor/glfw/src",
+					"jsonFile" : "directory-code.vendor.glfw.src-Debug-c25f04cd45bc1fce8447.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 1,
+					"projectIndex" : 1,
+					"source" : "code/vendor/glfw/src",
+					"targetIndexes" : 
+					[
+						1
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "BirdView_OpenGL",
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						1,
+						2
+					],
+					"name" : "GLFW",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						1
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "BirdView_OpenGL::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-BirdView_OpenGL-Debug-bce8506ef939405c4809.json",
+					"name" : "BirdView_OpenGL",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "glfw::@29d85b41d55a6f8ed89f",
+					"jsonFile" : "target-glfw-Debug-e4795b19a6d40bb81995.json",
+					"name" : "glfw",
+					"projectIndex" : 1
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/lead/Documents/Code/C++/OpenGL/OpenGL_BirdView/cmake-build-debug",
+		"source" : "/home/lead/Documents/Code/C++/OpenGL/OpenGL_BirdView"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 6
+	}
+}

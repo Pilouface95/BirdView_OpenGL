@@ -1,0 +1,173 @@
+// #ifdef GL_ES
+precision mediump float;
+// #endif
+
+// Generic uniform variables
+uniform vec2        u_resolution;// input image size
+uniform float       u_ratio;// = u_resolution / original_image_size
+// Textures
+uniform sampler2D   u_texFront;
+uniform sampler2D   u_texLeftFront;
+uniform sampler2D   u_texLeftBack;
+uniform sampler2D   u_texRightFront;
+uniform sampler2D   u_texRightBack;
+uniform sampler2D   u_texBack;
+// Blending masks
+uniform sampler2D   u_maskFront;
+uniform sampler2D   u_maskLeftFront;
+// Intrinsic matrices
+uniform mat3        u_intrinsicsFront;
+uniform mat3        u_intrinsicsLeftFront;
+uniform mat3        u_intrinsicsLeftBack;
+uniform mat3        u_intrinsicsRightFront;
+uniform mat3        u_intrinsicsRightBack;
+uniform mat3        u_intrinsicsBack;
+// Distortion coefficients
+uniform vec4        u_distCoeffsFront;
+uniform vec4        u_distCoeffsLeftFront;
+uniform vec4        u_distCoeffsLeftBack;
+uniform vec4        u_distCoeffsRightFront;
+uniform vec4        u_distCoeffsRightBack;
+uniform vec4        u_distCoeffsBack;
+// Scales & Shifts
+uniform float       u_scaleFront;
+uniform float       u_scaleLeftFront;
+uniform float       u_scaleLeftBack;
+uniform float       u_scaleRightFront;
+uniform float       u_scaleRightBack;
+uniform float       u_scaleBack;
+uniform vec2        u_shiftFront;
+uniform vec2        u_shiftLeftFront;
+uniform vec2        u_shiftLeftBack;
+uniform vec2        u_shiftRightFront;
+uniform vec2        u_shiftRightBack;
+uniform vec2        u_shiftBack;
+// Valid regions (under image coordinate system)
+uniform vec4        u_validRegionFront;
+uniform vec4        u_validRegionLeftFront;
+uniform vec4        u_validRegionLeftBack;
+uniform vec4        u_validRegionRightFront;
+uniform vec4        u_validRegionRightBack;
+uniform vec4        u_validRegionBack;
+/*  Homography matrices
+    /!\ H is culculated with points under gl_FragCoord's coordinate system, which means that for all the points (in both src & dst imgs) used to calculate H,
+    their y*=-1, y+=imgHeight. Then the inverse of H is used to find out where the current pixel's color is originated. /!\
+    /!\ Also, the coordinates of the source points used to get H are from the original sized image, without shrinking. /!\
+*/
+uniform mat3        u_H_invFront;
+uniform mat3        u_H_invLeftFront;
+uniform mat3        u_H_invLeftBack;
+uniform mat3        u_H_invRightFront;
+uniform mat3        u_H_invRightBack;
+uniform mat3        u_H_invBack;
+
+
+vec2 fisheye_undistortion(vec4 k, mat3 K, float scale, vec2 shift, vec2 coord){ //k:distortion coefficients; K:intrinsic matrix
+    K[0][0]*=u_ratio;
+    K[1][1]*=u_ratio;
+    K[2][0]*=u_ratio;
+    K[2][1]*=u_ratio;
+    float
+    fx_inv=1./(K[0][0]*scale),
+    fy_inv=1./(K[1][1]*scale),
+    cx_inv=-(K[2][0]+u_resolution.x/2.+shift.x)/K[0][0],
+    cy_inv=-(K[2][1]+u_resolution.y/2.+shift.y)/K[1][1];
+    mat3 K_inv=mat3(fx_inv, 0., 0., 0., fy_inv, 0., cx_inv, cy_inv, 1.);// col major
+
+    float
+    i=coord.y, //row number
+    j=coord.x, //col number
+    _x=i*K_inv[1][0]+j*K_inv[0][0]+K_inv[2][0],
+    _y=i*K_inv[1][1]+j*K_inv[0][1]+K_inv[2][1],
+    _w=i*K_inv[1][2]+j*K_inv[0][2]+K_inv[2][2];
+
+    float
+    x=_x/_w, y=_y/_w,
+    r=sqrt(x*x+y*y),
+    theta=atan(r),
+    theta2=theta*theta,
+    theta4=theta2*theta2,
+    theta6=theta2*theta4,
+    theta8=theta4*theta4,
+    r_d=theta*(1.+k[0]*theta2+k[1]*theta4+k[2]*theta6+k[3]*theta8),
+    r_scale=r_d/r;// if r=0 then r_scale=1. Ignore this rare case for performance reason
+
+
+    float
+    u=K[0][0]*x*r_scale+K[2][0],
+    v=K[1][1]*y*r_scale+K[2][1];
+    // Here in undistortion, size(OutputImg)=size(InputImg), meaning max(u)=u_resolution.x, max(y)=u_resolution.y.
+    // It's because the input coord here were gotten from homography_transformation(), ranging from vec2(0)~u_resolution*ratio. (since H_inv has got modified w/ ratio)
+    // u&v will be normalized to [0,1], thus ignoring the image size and can be used to retrieve color from the original image.
+    return vec2(u, v);
+}
+
+vec2 homography_transformation(mat3 H_inv, vec2 coord){
+    H_inv[0]/=u_ratio;
+    H_inv[1]/=u_ratio;//M for [src_points -> dst_points*ratio].
+    vec3
+    dst=vec3(coord, 1.),
+    src=H_inv*dst,
+    src_normalized=src/src.z;
+    return src_normalized.xy*u_ratio;// since H was defined as [W,H]->[W/2,H/2]
+}
+
+float cropping(vec4 cropRange){ // cropRange is defined for original size, and cropRange.y is under image coordinate system
+    float
+    x=cropRange.x*u_ratio,
+    y=cropRange.y*u_ratio,
+    w=cropRange.z*u_ratio,
+    h=cropRange.w*u_ratio,
+    withinRange=step(x, gl_FragCoord.x)*(1.-step(x+w, gl_FragCoord.x))*
+                (1.-step(u_resolution.y-y, gl_FragCoord.y))*step(u_resolution.y-y-h+1., gl_FragCoord.y);
+    return withinRange;
+}
+
+// Wrapper: undistortion + homography + cropping
+vec4 birdView(vec4 k, mat3 K, float scale, vec2 shift, mat3 H_inv, vec2 coord, vec4 cropRange, sampler2D texture){
+    vec2 coordInTex=homography_transformation(H_inv, coord);// coord in undistorted
+    coordInTex=fisheye_undistortion(k, K, scale, shift, coordInTex);// coord in original
+    vec4 color=texture2D(texture, coordInTex/u_resolution);
+    float homographyWithinRange=step(0., coordInTex.x)*(1.-step(u_resolution.x, coordInTex.x))
+                                *step(0., coordInTex.y)*(1.-step(u_resolution.y, coordInTex.y));
+    float croppingWithinRange=cropping(cropRange);
+    // float croppingWithinRange = 1.;// no cropping
+    // return resultCoord;
+    return color*homographyWithinRange*croppingWithinRange;
+}
+
+vec4 blending(vec4 blendingRegion, sampler2D mask, vec4 color, bool maskInverse){ // blendingRegion is defined on orignal size
+    vec2 coord=gl_FragCoord.xy/u_ratio;
+    coord.y-=u_resolution.y/u_ratio-blendingRegion.w; // mask at the top right corner
+    coord.x-=blendingRegion.x;
+    coord.y+=blendingRegion.y;
+    vec2 maskCoordNormalized = coord / blendingRegion.zw;
+    vec4 maskValue = texture2D(mask, maskCoordNormalized);
+    // within blendingRegion: weight from mask; out of: weight=1
+    float
+    inBlendingRegion=cropping(blendingRegion),
+    weight = inBlendingRegion * (maskInverse==true?1.-maskValue.x:maskValue.x) +
+            (1.-inBlendingRegion)*1.;
+    color.rgb*=weight;
+    return color;
+}
+
+void main(){
+    vec4 colorFront=birdView(u_distCoeffsFront, u_intrinsicsFront, u_scaleFront, u_shiftFront, u_H_invFront, gl_FragCoord.xy, u_validRegionFront, u_texFront);
+    vec4 colorLeftFront=birdView(u_distCoeffsLeftFront, u_intrinsicsLeftFront, u_scaleLeftFront, u_shiftLeftFront, u_H_invLeftFront, gl_FragCoord.xy, u_validRegionLeftFront, u_texLeftFront);
+
+    vec4 topLeftCorner=vec4(0, 0, 195, 200);
+//    gl_FragColor = blending(topLeftCorner, u_maskFront, colorFront, false);
+//    gl_FragColor = blending(topLeftCorner, u_maskFront, colorLeftFront, true);
+    gl_FragColor = blending(topLeftCorner, u_maskFront, colorFront, false) + blending(topLeftCorner, u_maskFront, colorLeftFront, true);
+
+}
+
+
+/// ================ Visualization using glslViewer ================
+//  ratio=0.25
+//  glslViewer undistortion_opencv.frag front.jpg -l -w 480 -h 270
+//  ratio=0.5
+//  glslViewer undistortion_opencv.frag front.jpg -l -w 960 -h 540
+//  ratio=1
+//  glslViewer undistortion_opencv.frag front.jpg -l -w 1920 -h 1080
